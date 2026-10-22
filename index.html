@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Омут памяти</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="stars"></div>
+
+  <header class="header">
+    <h1>🌀 Омут памяти</h1>
+    <p class="subtitle">Здесь хранятся твои воспоминания</p>
+  </header>
+
+  <main class="container">
+    <!-- Форма добавления -->
+    <section class="form-section">
+      <h2>Добавить воспоминание</h2>
+      <form id="memoryForm" class="memory-form">
+        <input
+          type="text"
+          id="title"
+          placeholder="Название воспоминания"
+          maxlength="60"
+          required
+        />
+        <textarea
+          id="text"
+          placeholder="Что произошло? Опиши момент..."
+          maxlength="500"
+          rows="3"
+          required
+        ></textarea>
+        <input type="date" id="date" required />
+        <input
+          type="text"
+          id="tag"
+          placeholder="Тег (например: друзья, путешествие)"
+          maxlength="20"
+        />
+        <button type="submit">Погрузить в Омут</button>
+      </form>
+    </section>
+
+    <!-- Поиск и фильтр -->
+    <section class="controls">
+      <input
+        type="text"
+        id="search"
+        placeholder="🔍 Поиск по воспоминаниям..."
+      />
+      <div id="tagFilters" class="tag-filters"></div>
+    </section>
+
+    <!-- Сетка воспоминаний -->
+    <section id="memoriesGrid" class="memories-grid"></section>
+
+    <!-- Пустое состояние -->
+    <p id="emptyState" class="empty-state">
+      Омут пуст... Добавь первое воспоминание ✨
+    </p>
+  </main>
+
+  <!-- Модальное окно для просмотра -->
+  <div id="modal" class="modal hidden">
+    <div class="modal-content">
+      <button id="closeModal" class="close-btn">✕</button>
+      <h2 id="modalTitle"></h2>
+      <p id="modalDate" class="modal-date"></p>
+      <p id="modalText"></p>
+      <span id="modalTag" class="tag"></span>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
