@@ -1,0 +1,366 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: "Segoe UI", system-ui, sans-serif;
+}
+
+body {
+  min-height: 100vh;
+  background: radial-gradient(ellipse at top, #1a2a6c, #0b0f2b 60%, #000);
+  color: #e0e6ff;
+  padding: 20px;
+  overflow-x: hidden;
+  position: relative;
+}
+
+/* Звёзды на фоне */
+.stars {
+  position: fixed;
+  inset: 0;
+  background-image:
+    radial-gradient(2px 2px at 20% 30%, #fff, transparent),
+    radial-gradient(1px 1px at 40% 70%, #cfe, transparent),
+    radial-gradient(1.5px 1.5px at 60% 20%, #fff, transparent),
+    radial-gradient(1px 1px at 80% 50%, #bcd, transparent),
+    radial-gradient(2px 2px at 90% 80%, #fff, transparent),
+    radial-gradient(1px 1px at 10% 90%, #cfe, transparent);
+  background-size: 200% 200%;
+  opacity: 0.5;
+  animation: twinkle 8s infinite alternate;
+  pointer-events: none;
+  z-index: 0;
+}
+
+@keyframes twinkle {
+  from { opacity: 0.3; }
+  to { opacity: 0.7; }
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 30px;
+  position: relative;
+  z-index: 1;
+}
+
+.header h1 {
+  font-size: 2.5rem;
+  background: linear-gradient(90deg, #7ee8fa, #a18cd1, #fbc2eb);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  letter-spacing: 2px;
+}
+
+.subtitle {
+  color: #9aa8d8;
+  margin-top: 8px;
+  font-style: italic;
+}
+
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  position: relative;
+  z-index: 1;
+}
+
+/* Форма */
+.form-section {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(126, 232, 250, 0.2);
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+
+.form-section h2 {
+  font-size: 1.2rem;
+  margin-bottom: 14px;
+  color: #7ee8fa;
+}
+
+.memory-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.memory-form input,
+.memory-form textarea {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(126, 232, 250, 0.25);
+  border-radius: 10px;
+  padding: 12px;
+  color: #e0e6ff;
+  font-size: 1rem;
+  outline: none;
+  transition: border 0.2s, box-shadow 0.2s;
+  width: 100%;
+  resize: vertical;
+}
+
+.memory-form input:focus,
+.memory-form textarea:focus {
+  border-color: #7ee8fa;
+  box-shadow: 0 0 12px rgba(126, 232, 250, 0.4);
+}
+
+.memory-form button {
+  background: linear-gradient(135deg, #7ee8fa, #a18cd1);
+  border: none;
+  padding: 12px;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 1rem;
+  color: #0b0f2b;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.2s;
+}
+
+.memory-form button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(126, 232, 250, 0.5);
+}
+
+.memory-form button:active {
+  transform: translateY(0);
+}
+
+/* Поиск и теги */
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+#search {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(126, 232, 250, 0.25);
+  border-radius: 10px;
+  padding: 12px;
+  color: #e0e6ff;
+  font-size: 1rem;
+  outline: none;
+}
+
+#search:focus {
+  border-color: #7ee8fa;
+  box-shadow: 0 0 12px rgba(126, 232, 250, 0.4);
+}
+
+.tag-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag-btn {
+  background: rgba(126, 232, 250, 0.1);
+  border: 1px solid rgba(126, 232, 250, 0.4);
+  color: #7ee8fa;
+  padding: 6px 14px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.tag-btn:hover {
+  background: rgba(126, 232, 250, 0.25);
+}
+
+.tag-btn.active {
+  background: #7ee8fa;
+  color: #0b0f2b;
+  font-weight: 600;
+}
+
+/* Сетка */
+.memories-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.memory-card {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(126, 232, 250, 0.2);
+  border-radius: 16px;
+  padding: 16px;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s, border 0.2s;
+  animation: floatIn 0.4s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+@keyframes floatIn {
+  from { opacity: 0; transform: translateY(15px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.memory-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at top right, rgba(126, 232, 250, 0.15), transparent 60%);
+  pointer-events: none;
+}
+
+.memory-card:hover {
+  transform: translateY(-4px) scale(1.02);
+  box-shadow: 0 10px 30px rgba(126, 232, 250, 0.25);
+  border-color: #7ee8fa;
+}
+
+.memory-card h3 {
+  font-size: 1.05rem;
+  color: #fff;
+  margin-bottom: 6px;
+}
+
+.memory-date {
+  font-size: 0.8rem;
+  color: #9aa8d8;
+  margin-bottom: 8px;
+}
+
+.memory-preview {
+  font-size: 0.9rem;
+  color: #c5cdee;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.tag {
+  display: inline-block;
+  background: rgba(161, 140, 209, 0.25);
+  border: 1px solid rgba(161, 140, 209, 0.5);
+  color: #d8c9ff;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+}
+
+.delete-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(255, 80, 80, 0.15);
+  border: 1px solid rgba(255, 80, 80, 0.4);
+  color: #ff8080;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  z-index: 2;
+}
+
+.delete-btn:hover {
+  background: #ff5050;
+  color: #fff;
+}
+
+.empty-state {
+  text-align: center;
+  color: #6b7899;
+  font-style: italic;
+  padding: 40px 20px;
+}
+
+/* Модалка */
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 20px;
+  animation: fadeIn 0.25s ease;
+}
+
+.modal.hidden {
+  display: none;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-content {
+  background: linear-gradient(135deg, #141b3d, #0b0f2b);
+  border: 1px solid rgba(126, 232, 250, 0.4);
+  border-radius: 20px;
+  padding: 30px;
+  max-width: 500px;
+  width: 100%;
+  position: relative;
+  box-shadow: 0 0 60px rgba(126, 232, 250, 0.3);
+  animation: popIn 0.3s ease;
+}
+
+@keyframes popIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.modal-content h2 {
+  color: #7ee8fa;
+  margin-bottom: 8px;
+  padding-right: 30px;
+}
+
+.modal-date {
+  color: #9aa8d8;
+  font-size: 0.9rem;
+  margin-bottom: 16px;
+}
+
+.modal-content p {
+  color: #c5cdee;
+  line-height: 1.6;
+  margin-bottom: 16px;
+  white-space: pre-wrap;
+}
+
+.close-btn {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: #e0e6ff;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background 0.2s;
+}
+
+.close-btn:hover {
+  background: rgba(255, 80, 80, 0.6);
+}
+
+/* Адаптив */
+@media (max-width: 500px) {
+  .header h1 { font-size: 1.8rem; }
+  .memories-grid { grid-template-columns: 1fr; }
+}
