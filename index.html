@@ -3,70 +3,54 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Омут памяти</title>
+  <title>PENSIEVE // Нейросеть памяти</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="stars"></div>
+
+  <!-- Canvas-фон с нитями -->
+  <canvas id="neuralCanvas"></canvas>
+
+  <!-- HUD-уголки -->
+  <div class="hud-corner hud-tl"></div>
+  <div class="hud-corner hud-tr"></div>
+  <div class="hud-corner hud-bl"></div>
+  <div class="hud-corner hud-br"></div>
 
   <header class="header">
-    <h1>🌀 Омут памяти</h1>
-    <p class="subtitle">Здесь хранятся твои воспоминания</p>
+    <h1>PENSIEVE <span class="dim">//</span> MEMORY NETWORK</h1>
+    <p class="subtitle">[ нейросеть активна · узлов: <span id="nodeCount">0</span> ]</p>
   </header>
 
   <main class="container">
-    <!-- Форма добавления -->
-    <section class="form-section">
-      <h2>Добавить воспоминание</h2>
-      <form id="memoryForm" class="memory-form">
-        <input
-          type="text"
-          id="title"
-          placeholder="Название воспоминания"
-          maxlength="60"
-          required
-        />
-        <textarea
-          id="text"
-          placeholder="Что произошло? Опиши момент..."
-          maxlength="500"
-          rows="3"
-          required
-        ></textarea>
-        <input type="date" id="date" required />
-        <input
-          type="text"
-          id="tag"
-          placeholder="Тег (например: друзья, путешествие)"
-          maxlength="20"
-        />
-        <button type="submit">Погрузить в Омут</button>
+    <!-- Панель добавления -->
+    <section class="panel" id="formPanel">
+      <button class="panel-toggle" id="toggleForm">＋ НОВЫЙ УЗЕЛ</button>
+      <form id="memoryForm" class="memory-form hidden">
+        <input type="text" id="title" placeholder="НАЗВАНИЕ" maxlength="60" required />
+        <textarea id="text" placeholder="ОПИСАНИЕ ВОСПОМИНАНИЯ..." maxlength="500" rows="3" required></textarea>
+        <div class="row">
+          <input type="date" id="date" required />
+          <input type="text" id="tag" placeholder="ТЕГ" maxlength="20" />
+        </div>
+        <button type="submit">СОЗДАТЬ УЗЕЛ</button>
       </form>
     </section>
 
-    <!-- Поиск и фильтр -->
+    <!-- Панель поиска и тегов -->
     <section class="controls">
-      <input
-        type="text"
-        id="search"
-        placeholder="🔍 Поиск по воспоминаниям..."
-      />
+      <input type="text" id="search" placeholder="🔍 СКАНИРОВАТЬ ПАМЯТЬ..." />
       <div id="tagFilters" class="tag-filters"></div>
     </section>
-
-    <!-- Сетка воспоминаний -->
-    <section id="memoriesGrid" class="memories-grid"></section>
-
-    <!-- Пустое состояние -->
-    <p id="emptyState" class="empty-state">
-      Омут пуст... Добавь первое воспоминание ✨
-    </p>
   </main>
 
-  <!-- Модальное окно для просмотра -->
+  <!-- Модалка воспоминания -->
   <div id="modal" class="modal hidden">
     <div class="modal-content">
-      <button id="closeModal" class="close-btn">✕</button>
+      <div class="modal-header">
+        <span class="modal-id">NODE // <span id="modalId"></span></span>
+        <button id="closeModal" class="close-btn">✕</button>
+      </div>
       <h2 id="modalTitle"></h2>
       <p id="modalDate" class="modal-date"></p>
       <p id="modalText"></p>
@@ -74,6 +58,7 @@
     </div>
   </div>
 
+  <script src="neural.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
