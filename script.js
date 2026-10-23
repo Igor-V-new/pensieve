@@ -1,11 +1,12 @@
 // ================================================================
-// PENSIEVE v4 — данные, CRUD, экспорт/импорт, таймлайн
+// PENSIEVE v4.1 — данные, CRUD, экспорт/импорт, таймлайн
 // ================================================================
+"use strict";
 
 let memories = [];
 let activeTag = null;
 let searchQuery = "";
-const STORAGE_KEY = "pensieve_memories_v3"; // та же, что в v3 — данные совместимы
+const STORAGE_KEY = "pensieve_memories_v3";
 
 // ---------------- DOM ----------------
 const form = document.getElementById("memoryForm");
@@ -46,24 +47,38 @@ const deleteBtn = document.getElementById("deleteBtn");
 
 let currentModalId = null;
 
+// ---------------- Safe storage ----------------
+function safeGet(key) {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+function safeSet(key, val) {
+  try { localStorage.setItem(key, val); return true; }
+  catch (e) {
+    console.warn("localStorage set failed:", e);
+    if (typeof log === "function") log("STORAGE FULL!", "warn");
+    return false;
+  }
+}
+
 // ---------------- Storage ----------------
 function loadMemories() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = safeGet(STORAGE_KEY);
     if (raw) {
       memories = JSON.parse(raw);
     } else {
-      const old = localStorage.getItem("pensieve_memories");
+      const old = safeGet("pensieve_memories");
       memories = old ? JSON.parse(old) : [];
       memories = memories.map(m => ({ links: "", ...m }));
     }
   } catch (e) {
+    console.error("load failed:", e);
     memories = [];
   }
 }
 
 function saveMemories() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(memories));
+  return safeSet(STORAGE_KEY, JSON.stringify(memories));
 }
 
 // ---------------- Утилиты ----------------
@@ -73,8 +88,10 @@ function formatDate(iso) {
     "января", "февраля", "марта", "апреля", "мая", "июня",
     "июля", "августа", "сентября", "октября", "ноября", "декабря"
   ];
-  const [y, m, d] = iso.split("-");
-  return `${Number(d)} ${months[Number(m) - 1]} ${y}`;
+  const parts = iso.split("-");
+  if (parts.length !== 3) return iso;
+  const [y, m, d] = parts;
+  return `${Number(d)} ${months[Number(m) - 1] || ""} ${y}`;
 }
 
 function shortId(id) {
@@ -84,7 +101,7 @@ function shortId(id) {
 // ---------------- Форма ----------------
 toggleForm.addEventListener("click", () => {
   form.classList.toggle("hidden");
-  if (typeof log === "function") log("FORM.TOGGLE", "info");
+  log("FORM.TOGGLE", "info");
 });
 
 cancelEdit.addEventListener("click", resetForm);
@@ -115,7 +132,7 @@ form.addEventListener("submit", (e) => {
     const idx = memories.findIndex(m => m.id === editId.value);
     if (idx !== -1) {
       memories[idx] = { ...memories[idx], ...data };
-      if (typeof log === "function") log(`EDIT node_${shortId(editId.value)}`, "ok");
+      log(`EDIT node_${shortId(editId.value)}`, "ok");
     }
   } else {
     const m = {
@@ -124,8 +141,8 @@ form.addEventListener("submit", (e) => {
       createdAt: Date.now(),
     };
     memories.push(m);
-    if (typeof log === "function") log(`CREATE node_${shortId(m.id)}`, "ok");
-    if (typeof playBeep === "function") playBeep(1000, 0.1, 0.06);
+    log(`CREATE node_${shortId(m.id)}`, "ok");
+    playBeep(1000, 0.1, 0.06);
   }
 
   saveMemories();
@@ -157,10 +174,12 @@ function openModal(id) {
     modalLinks.appendChild(label);
 
     linkIds.forEach(lid => {
-      const target = memories.find(x => x.id.endsWith(lid) && x.id !== m.id);
+      const target = memories.find(x => x.id !== m.id && x.id.endsWith(lid));
       const chip = document.createElement("span");
       chip.className = "link-chip";
-      chip.textContent = target ? `${shortId(target.id)} · ${target.title.slice(0, 20)}` : `${lid} (не найдено)`;
+      chip.textContent = target
+        ? `${shortId(target.id)} · ${target.title.slice(0, 20)}`
+        : `${lid} (не найдено)`;
       if (target) {
         chip.onclick = () => {
           closeModal();
@@ -172,7 +191,7 @@ function openModal(id) {
   }
 
   modal.classList.remove("hidden");
-  if (typeof log === "function") log(`VIEW node_${shortId(id)}`, "info");
+  log(`VIEW node_${shortId(id)}`, "info");
 }
 
 function closeModal() {
@@ -200,7 +219,7 @@ editBtn.addEventListener("click", () => {
 
   form.classList.remove("hidden");
   closeModal();
-  if (typeof log === "function") log(`EDIT MODE node_${shortId(m.id)}`, "warn");
+  log(`EDIT MODE node_${shortId(m.id)}`, "warn");
 });
 
 deleteBtn.addEventListener("click", () => {
@@ -209,8 +228,8 @@ deleteBtn.addEventListener("click", () => {
   memories = memories.filter(m => m.id !== currentModalId);
   saveMemories();
   closeModal();
-  if (typeof log === "function") log(`DELETE node`, "warn");
-  if (typeof playBeep === "function") playBeep(300, 0.15, 0.05, "sawtooth");
+  log(`DELETE node`, "warn");
+  playBeep(300, 0.15, 0.05, "sawtooth");
   render();
 });
 
@@ -218,6 +237,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     closeModal();
     resetForm();
+    return;
   }
   const tag = document.activeElement.tagName;
   if (tag === "INPUT" || tag === "TEXTAREA") {
@@ -228,12 +248,12 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     form.classList.remove("hidden");
     titleInput.focus();
-    if (typeof log === "function") log("HOTKEY: NEW", "info");
+    log("HOTKEY: NEW", "info");
   }
   if (e.key === "/") {
     e.preventDefault();
     searchInput.focus();
-    if (typeof log === "function") log("HOTKEY: SEARCH", "info");
+    log("HOTKEY: SEARCH", "info");
   }
 });
 
@@ -298,28 +318,24 @@ function render() {
   renderTimeline();
   const filtered = getFiltered();
 
-  if (typeof updateNodes === "function") {
-    updateNodes(
-      filtered,
-      openModal,
-      () => {},
-      () => {
-        activeTag = null;
-        searchQuery = "";
-        searchInput.value = "";
-        if (typeof scrambleNodes === "function") scrambleNodes();
-        render();
-      }
-    );
-  }
+  updateNodes(
+    filtered,
+    openModal,
+    () => {},
+    () => {
+      activeTag = null;
+      searchQuery = "";
+      searchInput.value = "";
+      scrambleNodes();
+      render();
+    }
+  );
 }
 
 // ---------------- Поиск ----------------
 searchInput.addEventListener("input", (e) => {
   searchQuery = e.target.value.trim();
-  if (typeof log === "function" && searchQuery) {
-    log(`SEARCH "${searchQuery}"`, "info");
-  }
+  if (searchQuery) log(`SEARCH "${searchQuery}"`, "info");
   render();
 });
 
@@ -333,7 +349,7 @@ exportBtn.addEventListener("click", () => {
   a.download = `pensieve-backup-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   URL.revokeObjectURL(url);
-  if (typeof log === "function") log("EXPORT OK", "ok");
+  log("EXPORT OK", "ok");
 });
 
 importBtn.addEventListener("click", () => importFile.click());
@@ -350,10 +366,10 @@ importFile.addEventListener("change", (e) => {
       memories = data.map(m => ({ links: "", ...m }));
       saveMemories();
       render();
-      if (typeof log === "function") log(`IMPORT ${data.length} nodes`, "ok");
+      log(`IMPORT ${data.length} nodes`, "ok");
     } catch (err) {
       alert("Ошибка импорта: " + err.message);
-      if (typeof log === "function") log("IMPORT FAIL", "warn");
+      log("IMPORT FAIL", "warn");
     }
   };
   reader.readAsText(file);
@@ -361,9 +377,7 @@ importFile.addEventListener("change", (e) => {
 });
 
 // ---------------- Scramble ----------------
-scrambleBtn.addEventListener("click", () => {
-  if (typeof scrambleNodes === "function") scrambleNodes();
-});
+scrambleBtn.addEventListener("click", scrambleNodes);
 
 // ---------------- Camera reset ----------------
 resetCamBtn.addEventListener("click", () => {
@@ -375,9 +389,9 @@ resetCamBtn.addEventListener("click", () => {
 // ---------------- Help hint ----------------
 helpClose.addEventListener("click", () => {
   helpHint.classList.add("hidden");
-  localStorage.setItem("pensieve_help_hidden", "1");
+  safeSet("pensieve_help_hidden", "1");
 });
-if (localStorage.getItem("pensieve_help_hidden") === "1") {
+if (safeGet("pensieve_help_hidden") === "1") {
   helpHint.classList.add("hidden");
 }
 
