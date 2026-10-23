@@ -1,6 +1,7 @@
 // ================================================================
-// PENSIEVE NEURAL NETWORK v4 — ПОЛНОЕ 3D-ПРОСТРАНСТВО
+// PENSIEVE NEURAL NETWORK v4.1 — исправленная 3D-версия
 // ================================================================
+"use strict";
 
 const canvas = document.getElementById("neuralCanvas");
 const ctx = canvas.getContext("2d");
@@ -8,11 +9,14 @@ const bloomCanvas = document.getElementById("bloomCanvas");
 const bctx = bloomCanvas.getContext("2d");
 const sparksLayer = document.getElementById("sparksLayer");
 
-let W, H;
+let W = window.innerWidth;
+let H = window.innerHeight;
+
 let nodes = [];
 let ambientNodes = [];
 let pulses = [];
 let links = [];
+let nodeMap = new Map();          // id -> node (быстрый доступ)
 let mouse = { x: -1000, y: -1000, prevX: -1000, prevY: -1000 };
 let time = 0;
 let lastFrame = performance.now();
@@ -20,22 +24,23 @@ let fpsAccum = 0, fpsFrames = 0;
 let systemPulse = 0;
 
 const CFG = {
-  ambientCount: 120,
-  linkDistance: 180,        // 3D-расстояние
+  ambientCount: 100,
+  linkDistance: 180,
   ambientLinkDist: 180,
   mouseInfluence: 280,
   nodeBaseRadius: 24,
   sparkInterval: 28,
-  worldRadius: 380,          // радиус сферы, где живут узлы
-  autoRotate: 0.0012,        // скорость автовращения
-  autoRotateResumeDelay: 3000, // мс бездействия до возврата авто
+  worldRadius: 380,
+  autoRotate: 0.0012,
+  autoRotateResumeDelay: 3000,
+  maxPulses: 30,
 };
 
 // ---------------- Камера ----------------
+// ВАЖНО: rotZ убран полностью — он не использовался и вызывал NaN
 const camera = {
-  rotX: -0.25,          // наклон вверх/вниз
-  rotY: 0.4,            // поворот влево/вправо
-  rotZ: 0,
+  rotX: -0.25,
+  rotY: 0.4,
   zoom: 1,
   panX: 0,
   panY: 0,
@@ -48,31 +53,45 @@ const camera = {
   lastInteraction: 0,
 };
 
-// Восстановление камеры
-const CAM_KEY = "pensieve_camera_v4";
+const CAM_KEY = "pensieve_camera_v4_1";
+
+function safeGet(key) {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+function safeSet(key, val) {
+  try { localStorage.setItem(key, val); } catch { /* quota / private mode */ }
+}
+
 function loadCamera() {
+  const raw = safeGet(CAM_KEY);
+  if (!raw) return;
   try {
-    const raw = localStorage.getItem(CAM_KEY);
-    if (!raw) return;
     const c = JSON.parse(raw);
-    Object.assign(camera, {
-      rotX: c.rotX, rotY: c.rotY, rotZ: c.rotZ ?? 0,
-      zoom: c.zoom, panX: c.panX ?? 0, panY: c.panY ?? 0,
-    });
+    if (typeof c.rotX === "number" && isFinite(c.rotX)) camera.rotX = c.rotX;
+    if (typeof c.rotY === "number" && isFinite(c.rotY)) camera.rotY = c.rotY;
+    if (typeof c.zoom === "number" && isFinite(c.zoom)) camera.zoom = Math.max(0.2, Math.min(4, c.zoom));
+    if (typeof c.panX === "number" && isFinite(c.panX)) camera.panX = c.panX;
+    if (typeof c.panY === "number" && isFinite(c.panY)) camera.panY = c.panY;
+
     camera.targetRotX = camera.rotX;
     camera.targetRotY = camera.rotY;
     camera.targetZoom = camera.zoom;
     camera.targetPanX = camera.panX;
     camera.targetPanY = camera.panY;
-  } catch (e) {}
+  } catch { /* ignore */ }
 }
-function saveCamera() {
-  localStorage.setItem(CAM_KEY, JSON.stringify({
-    rotX: camera.rotX, rotY: camera.rotY, rotZ: camera.rotZ,
-    zoom: camera.zoom, panX: camera.panX, panY: camera.panY,
-  }));
+
+let saveCameraTimer = 0;
+function saveCameraDebounced() {
+  if (saveCameraTimer) clearTimeout(saveCameraTimer);
+  saveCameraTimer = setTimeout(() => {
+    safeSet(CAM_KEY, JSON.stringify({
+      rotX: camera.rotX, rotY: camera.rotY,
+      zoom: camera.zoom, panX: camera.panX, panY: camera.panY,
+    }));
+    saveCameraTimer = 0;
+  }, 250);
 }
-loadCamera();
 
 function resetCamera() {
   camera.targetRotX = -0.25;
@@ -81,46 +100,39 @@ function resetCamera() {
   camera.targetPanX = 0;
   camera.targetPanY = 0;
   camera.lastInteraction = performance.now();
-  saveCamera();
-  if (typeof log === "function") log("CAMERA RESET", "ok");
+  saveCameraDebounced();
+  log("CAMERA RESET", "ok");
 }
+
+loadCamera();
 
 // ---------------- 3D-проекция ----------------
-// Вращаем точку через матрицы поворота по X, Y, Z
-function rotatePoint(p, rx, ry, rz) {
+function rotatePoint(p, rx, ry) {
   // Поворот по X
-  let cy = Math.cos(rx), sy = Math.sin(rx);
-  let y1 = p.y * cy - p.z * sy;
-  let z1 = p.y * sy + p.z * cy;
+  const cy = Math.cos(rx), sy = Math.sin(rx);
+  const y1 = p.y * cy - p.z * sy;
+  const z1 = p.y * sy + p.z * cy;
   // Поворот по Y
-  let cx = Math.cos(ry), sx = Math.sin(ry);
-  let x2 = p.x * cx + z1 * sx;
-  let z2 = -p.x * sx + z1 * cx;
-  // Поворот по Z
-  let cz = Math.cos(rz), sz = Math.sin(rz);
-  let x3 = x2 * cz - y1 * sz;
-  let y3 = x2 * sz + y1 * cz;
-  return { x: x3, y: y3, z: z2 };
+  const cx = Math.cos(ry), sx = Math.sin(ry);
+  const x2 = p.x * cx + z1 * sx;
+  const z2 = -p.x * sx + z1 * cx;
+  return { x: x2, y: y1, z: z2 };
 }
 
-// Проекция 3D → 2D экран
 function project(p) {
-  const rotated = rotatePoint(p, camera.rotX, camera.rotY, camera.rotZ);
-  const camZ = rotated.z + camera.distance;
-  if (camZ <= 10) return null; // за камерой
+  const r = rotatePoint(p, camera.rotX, camera.rotY);
+  const camZ = r.z + camera.distance;
+  if (camZ <= 20) return null; // за камерой / слишком близко
 
   const fov = 800;
   const scale = (fov / camZ) * camera.zoom;
 
-  const screenX = W / 2 + rotated.x * scale + camera.panX;
-  const screenY = H / 2 + rotated.y * scale + camera.panY;
-
   return {
-    x: screenX,
-    y: screenY,
+    x: W / 2 + r.x * scale + camera.panX,
+    y: H / 2 + r.y * scale + camera.panY,
     scale,
-    depth: camZ,        // чем больше — тем дальше
-    visible: camZ > 20,
+    depth: camZ,
+    visible: true,
   };
 }
 
@@ -128,22 +140,26 @@ function project(p) {
 let audioCtx = null;
 function initAudio() {
   if (audioCtx) return;
-  try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  } catch { /* нет поддержки */ }
 }
 window.addEventListener("pointerdown", () => initAudio(), { once: true });
 
 function playBeep(freq = 880, duration = 0.06, vol = 0.05, type = "sine") {
   if (!audioCtx) return;
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  osc.type = type;
-  osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-  gain.gain.setValueAtTime(vol, audioCtx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
-  osc.connect(gain);
-  gain.connect(audioCtx.destination);
-  osc.start();
-  osc.stop(audioCtx.currentTime + duration);
+  try {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + duration);
+  } catch { /* ignore */ }
 }
 
 // ---------------- Терминал ----------------
@@ -155,16 +171,21 @@ function log(msg, cls = "info") {
   const line = document.createElement("div");
   line.className = "terminal-line";
   const t = new Date().toTimeString().slice(0, 8);
-  line.innerHTML = `<span class="info">[${t}]</span> <span class="${cls}">${msg}</span>`;
+  const span = document.createElement("span");
+  span.className = cls;
+  span.textContent = String(msg);
+  line.innerHTML = `<span class="info">[${t}]</span> `;
+  line.appendChild(span);
   terminalBody.appendChild(line);
   while (terminalBody.children.length > MAX_LOG) {
     terminalBody.removeChild(terminalBody.firstChild);
   }
 }
 
-// ---------------- Цвета по тегам ----------------
+// ---------------- Цвета ----------------
 const TAG_HUES = [180, 200, 280, 320, 140, 40, 0];
 const tagColorCache = new Map();
+
 function getTagHue(tag) {
   if (!tag) return 190;
   if (tagColorCache.has(tag)) return tagColorCache.get(tag);
@@ -180,8 +201,12 @@ function hsl(h, s, l, a = 1) {
 
 // ---------------- Размеры ----------------
 function resize() {
-  W = canvas.width = bloomCanvas.width = window.innerWidth;
-  H = canvas.height = bloomCanvas.height = window.innerHeight;
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = W;
+  canvas.height = H;
+  bloomCanvas.width = W;
+  bloomCanvas.height = H;
 }
 window.addEventListener("resize", resize);
 resize();
@@ -190,7 +215,6 @@ resize();
 function createAmbient() {
   ambientNodes = [];
   for (let i = 0; i < CFG.ambientCount; i++) {
-    // случайная точка в сфере
     const theta = Math.random() * Math.PI * 2;
     const phi = Math.acos(2 * Math.random() - 1);
     const r = CFG.worldRadius * (1.2 + Math.random() * 0.6);
@@ -209,6 +233,7 @@ createAmbient();
 
 // ---------------- Искры ----------------
 function spawnSpark(x, y) {
+  if (!sparksLayer) return;
   const s = document.createElement("div");
   s.className = "spark";
   s.style.left = x + "px";
@@ -221,48 +246,72 @@ function spawnSpark(x, y) {
   setTimeout(() => s.remove(), 900);
 }
 
-// ---------------- Внешний API ----------------
+// ---------------- Обновление данных ----------------
 function updateNodes(memories, onClick, onHover, onDoubleBg) {
-  const oldById = new Map(nodes.map(n => [n.id, n]));
+  const oldById = nodeMap;
 
-  nodes = memories.map((m) => {
+  const newNodes = [];
+  const newMap = new Map();
+
+  for (const m of memories) {
     const existing = oldById.get(m.id);
     if (existing) {
       existing.title = m.title;
       existing.tag = m.tag;
       existing.hue = getTagHue(m.tag);
-      return existing;
+      existing.dying = false;
+      newNodes.push(existing);
+      newMap.set(existing.id, existing);
+    } else {
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+      const r = CFG.worldRadius * (0.4 + Math.random() * 0.6);
+      const n = {
+        id: m.id,
+        title: m.title,
+        tag: m.tag,
+        hue: getTagHue(m.tag),
+        x: r * Math.sin(phi) * Math.cos(theta),
+        y: r * Math.sin(phi) * Math.sin(theta),
+        z: r * Math.cos(phi),
+        vx: (Math.random() - 0.5) * 0.4,
+        vy: (Math.random() - 0.5) * 0.4,
+        vz: (Math.random() - 0.5) * 0.4,
+        phase: Math.random() * Math.PI * 2,
+        radius: CFG.nodeBaseRadius,
+        hovered: false,
+        flash: 0,
+        dying: false,
+      };
+      newNodes.push(n);
+      newMap.set(n.id, n);
     }
-    // случайная точка в сфере
-    const theta = Math.random() * Math.PI * 2;
-    const phi = Math.acos(2 * Math.random() - 1);
-    const r = CFG.worldRadius * (0.4 + Math.random() * 0.6);
-    return {
-      id: m.id,
-      title: m.title,
-      tag: m.tag,
-      hue: getTagHue(m.tag),
-      x: r * Math.sin(phi) * Math.cos(theta),
-      y: r * Math.sin(phi) * Math.sin(theta),
-      z: r * Math.cos(phi),
-      vx: (Math.random() - 0.5) * 0.4,
-      vy: (Math.random() - 0.5) * 0.4,
-      vz: (Math.random() - 0.5) * 0.4,
-      phase: Math.random() * Math.PI * 2,
-      radius: CFG.nodeBaseRadius,
-      hovered: false,
-      flash: 0,
-      dying: false,
-    };
-  });
+  }
 
-  // явные связи
+  // Плавное исчезновение удалённых
+  for (const [id, oldN] of oldById) {
+    if (!newMap.has(id) && !oldN.dying) {
+      oldN.dying = true;
+      newNodes.push(oldN);
+      newMap.set(id, oldN);
+      setTimeout(() => {
+        const idx = nodes.indexOf(oldN);
+        if (idx !== -1) nodes.splice(idx, 1);
+        nodeMap.delete(id);
+      }, 600);
+    }
+  }
+
+  nodes = newNodes;
+  nodeMap = newMap;
+
+  // Связи
   links = [];
   for (const m of memories) {
     const linkIds = (m.links || "").split(",").map(s => s.trim()).filter(Boolean);
     for (const lid of linkIds) {
       for (const n of nodes) {
-        if (n.id.endsWith(lid) && n.id !== m.id) {
+        if (n.id !== m.id && n.id.endsWith(lid)) {
           links.push({ a: m.id, b: n.id });
           break;
         }
@@ -270,48 +319,34 @@ function updateNodes(memories, onClick, onHover, onDoubleBg) {
     }
   }
 
-  document.getElementById("nodeCount").textContent = nodes.length;
+  // HUD
+  const nodeCountEl = document.getElementById("nodeCount");
+  if (nodeCountEl) nodeCountEl.textContent = nodes.filter(n => !n.dying).length;
   const hudNodes = document.getElementById("hudNodes");
-  if (hudNodes) hudNodes.textContent = nodes.length;
+  if (hudNodes) hudNodes.textContent = nodes.filter(n => !n.dying).length;
   const hudLinks = document.getElementById("hudLinks");
   if (hudLinks) hudLinks.textContent = links.length;
 
-  // Плавное исчезновение удалённых
-  for (const [id, oldN] of oldById) {
-    if (!nodes.find(n => n.id === id)) {
-      oldN.dying = true;
-      nodes.push(oldN);
-      setTimeout(() => {
-        const idx = nodes.indexOf(oldN);
-        if (idx !== -1) nodes.splice(idx, 1);
-      }, 600);
-    }
-  }
-
-  // Сохраняем колбэки для использования в обработчиках мыши
-  window._pensieveOnClick = onClick;
-  window._pensieveOnHover = onHover;
-  window._pensieveOnDoubleBg = onDoubleBg;
+  // Колбэки
+  callbacks.onClick = onClick;
+  callbacks.onHover = onHover;
+  callbacks.onDoubleBg = onDoubleBg;
 }
+
+const callbacks = { onClick: null, onHover: null, onDoubleBg: null };
 
 function scrambleNodes() {
   for (const n of nodes) {
+    if (n.dying) continue;
     n.vx = (Math.random() - 0.5) * 14;
     n.vy = (Math.random() - 0.5) * 14;
     n.vz = (Math.random() - 0.5) * 14;
   }
-  if (typeof log === "function") log("SCRAMBLE 3D", "warn");
-  if (typeof playBeep === "function") playBeep(400, 0.15, 0.06, "sawtooth");
+  log("SCRAMBLE 3D", "warn");
+  playBeep(400, 0.15, 0.06, "sawtooth");
 }
 
-// ---------------- Обработка мыши / touch ----------------
-let isDragging = false;
-let isPanning = false;
-let dragStart = { x: 0, y: 0 };
-let dragStartCam = { rotX: 0, rotY: 0, panX: 0, panY: 0 };
-let lastHoveredId = null;
-
-// Хелпер: найти узел под курсором (по проекции)
+// ---------------- Поиск узла под курсором ----------------
 function findNodeUnderCursor(mx, my) {
   let best = null;
   let bestDepth = Infinity;
@@ -319,12 +354,14 @@ function findNodeUnderCursor(mx, my) {
   for (const n of nodes) {
     if (n.dying) continue;
     const p = project(n);
-    if (!p || !p.visible) continue;
+    if (!p) continue;
+
     const dx = p.x - mx;
     const dy = p.y - my;
-    const hitR = Math.max(8, n.radius * p.scale * 0.85 + 8);
+    // ограничиваем радиус попадания: не больше 30px на экране
+    const hitR = Math.min(30, Math.max(8, n.radius * p.scale + 8));
+
     if (dx * dx + dy * dy < hitR * hitR) {
-      // выбираем ближайший к камере
       if (p.depth < bestDepth) {
         bestDepth = p.depth;
         best = n;
@@ -339,33 +376,39 @@ function getMousePos(e) {
   return { x: e.clientX - rect.left, y: e.clientY - rect.top };
 }
 
-// === ЛКМ: вращение ИЛИ клик по узлу ===
+// ---------------- Обработка мыши ----------------
+let isDragging = false;
+let isPanning = false;
+let hasMoved = false;
+let dragStart = { x: 0, y: 0 };
+let dragStartCam = { rotX: 0, rotY: 0, panX: 0, panY: 0 };
+let lastHoveredId = null;
+let pointerDownOnNode = false;
+
 canvas.addEventListener("mousedown", (e) => {
   const pos = getMousePos(e);
   const hit = findNodeUnderCursor(pos.x, pos.y);
 
+  pointerDownOnNode = !!hit;
+  hasMoved = false;
+  dragStart.x = pos.x;
+  dragStart.y = pos.y;
+
   if (e.button === 0 && !hit && !e.shiftKey) {
-    // ЛКМ по пустому — вращение
     isDragging = true;
     canvas.classList.add("dragging");
-    dragStart.x = pos.x;
-    dragStart.y = pos.y;
     dragStartCam.rotX = camera.targetRotX;
     dragStartCam.rotY = camera.targetRotY;
     camera.lastInteraction = performance.now();
   } else if (e.button === 2 || (e.button === 0 && e.shiftKey)) {
-    // ПКМ или Shift+ЛКМ — панорамирование
     isPanning = true;
     canvas.classList.add("dragging");
-    dragStart.x = pos.x;
-    dragStart.y = pos.y;
     dragStartCam.panX = camera.targetPanX;
     dragStartCam.panY = camera.targetPanY;
     camera.lastInteraction = performance.now();
   }
 });
 
-// === Движение мыши ===
 canvas.addEventListener("mousemove", (e) => {
   const pos = getMousePos(e);
   mouse.prevX = mouse.x;
@@ -376,6 +419,7 @@ canvas.addEventListener("mousemove", (e) => {
   if (isDragging) {
     const dx = pos.x - dragStart.x;
     const dy = pos.y - dragStart.y;
+    if (Math.abs(dx) + Math.abs(dy) > 3) hasMoved = true;
     camera.targetRotY = dragStartCam.rotY + dx * 0.006;
     camera.targetRotX = dragStartCam.rotX - dy * 0.006;
     camera.lastInteraction = performance.now();
@@ -384,6 +428,7 @@ canvas.addEventListener("mousemove", (e) => {
   if (isPanning) {
     const dx = pos.x - dragStart.x;
     const dy = pos.y - dragStart.y;
+    if (Math.abs(dx) + Math.abs(dy) > 3) hasMoved = true;
     camera.targetPanX = dragStartCam.panX + dx;
     camera.targetPanY = dragStartCam.panY + dy;
     camera.lastInteraction = performance.now();
@@ -399,110 +444,99 @@ canvas.addEventListener("mousemove", (e) => {
 
   if (hoveredId !== lastHoveredId) {
     lastHoveredId = hoveredId;
-    if (hoveredId && typeof playBeep === "function") {
+    if (hoveredId) {
       playBeep(1500, 0.04, 0.03);
-      if (typeof log === "function") log(`HOVER node_${hoveredId.slice(-4)}`, "info");
+      log(`HOVER node_${hoveredId.slice(-4)}`, "info");
     }
-    if (window._pensieveOnHover) window._pensieveOnHover(hoveredId);
+    if (callbacks.onHover) callbacks.onHover(hoveredId);
   }
 });
 
-// === Отпускание кнопки ===
-window.addEventListener("mouseup", (e) => {
+window.addEventListener("mouseup", () => {
   if (isDragging || isPanning) {
     isDragging = false;
     isPanning = false;
     canvas.classList.remove("dragging");
-    saveCamera();
+    saveCameraDebounced();
   }
-});
-
-// === Клик (быстрый без движения) ===
-let clickStartTime = 0;
-let clickStartPos = { x: 0, y: 0 };
-canvas.addEventListener("mousedown", (e) => {
-  clickStartTime = performance.now();
-  clickStartPos = getMousePos(e);
 });
 
 canvas.addEventListener("click", (e) => {
-  const dt = performance.now() - clickStartTime;
+  // игнорируем клик после drag
+  if (hasMoved) { hasMoved = false; return; }
+  // игнорируем клик по узлу — обработается отдельно, если нужен
   const pos = getMousePos(e);
-  const moved = Math.hypot(pos.x - clickStartPos.x, pos.y - clickStartPos.y);
-
-  // игнорируем клики после перетаскивания
-  if (moved > 5 || dt > 400) return;
-
   const hit = findNodeUnderCursor(pos.x, pos.y);
+
   if (hit) {
-    if (typeof playBeep === "function") playBeep(1200, 0.08, 0.06);
-    if (typeof log === "function") log(`OPEN node_${hit.id.slice(-4)}`, "ok");
-    pulses.push({ x: hit.x, y: hit.y, z: hit.z, r: 0, max: 100, hue: hit.hue });
-    if (window._pensieveOnClick) window._pensieveOnClick(hit.id);
+    playBeep(1200, 0.08, 0.06);
+    log(`OPEN node_${hit.id.slice(-4)}`, "ok");
+    addPulse(hit.x, hit.y, hit.z, 100, hit.hue);
+    if (callbacks.onClick) callbacks.onClick(hit.id);
   } else {
-    pulses.push({ x: 0, y: 0, z: 0, r: 0, max: 200, hue: 190 });
-    if (typeof playBeep === "function") playBeep(600, 0.1, 0.04);
+    addPulse(0, 0, 0, 200, 190);
+    playBeep(600, 0.1, 0.04);
   }
 });
 
-// === Двойной клик по фону — сброс ===
 canvas.addEventListener("dblclick", (e) => {
   const pos = getMousePos(e);
   const hit = findNodeUnderCursor(pos.x, pos.y);
-  if (!hit && window._pensieveOnDoubleBg) {
-    if (typeof log === "function") log("RESET FILTERS + SHUFFLE", "warn");
-    window._pensieveOnDoubleBg();
+  if (!hit && callbacks.onDoubleBg) {
+    log("RESET FILTERS + SHUFFLE", "warn");
+    callbacks.onDoubleBg();
   }
 });
 
-// === Контекстное меню отключаем (ПКМ = панорамирование) ===
 canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
-// === Колесо: зум ===
 canvas.addEventListener("wheel", (e) => {
   e.preventDefault();
   const factor = e.deltaY < 0 ? 1.12 : 0.89;
   camera.targetZoom = Math.max(0.2, Math.min(4, camera.targetZoom * factor));
   camera.lastInteraction = performance.now();
-  saveCamera();
+  saveCameraDebounced();
 }, { passive: false });
 
-// === Mouse leave ===
 canvas.addEventListener("mouseleave", () => {
   mouse.x = -1000; mouse.y = -1000;
-  nodes.forEach(n => (n.hovered = false));
-  if (window._pensieveOnHover) window._pensieveOnHover(null);
+  for (const n of nodes) n.hovered = false;
+  if (callbacks.onHover) callbacks.onHover(null);
 });
 
-// === Touch (базовая поддержка) ===
+// ---------------- Touch ----------------
 let touchStartDist = 0;
 let touchStartZoom = 1;
+let touchStartPan = { x: 0, y: 0 };
+let touchMode = "none"; // none | rotate | zoom
+
 canvas.addEventListener("touchstart", (e) => {
   if (e.touches.length === 1) {
+    touchMode = "rotate";
     const t = e.touches[0];
-    isDragging = true;
     dragStart.x = t.clientX;
     dragStart.y = t.clientY;
     dragStartCam.rotX = camera.targetRotX;
     dragStartCam.rotY = camera.targetRotY;
     camera.lastInteraction = performance.now();
   } else if (e.touches.length === 2) {
+    touchMode = "zoom";
     const dx = e.touches[0].clientX - e.touches[1].clientX;
     const dy = e.touches[0].clientY - e.touches[1].clientY;
-    touchStartDist = Math.hypot(dx, dy);
+    touchStartDist = Math.hypot(dx, dy) || 1;
     touchStartZoom = camera.targetZoom;
   }
 }, { passive: true });
 
 canvas.addEventListener("touchmove", (e) => {
-  if (e.touches.length === 1 && isDragging) {
+  if (touchMode === "rotate" && e.touches.length === 1) {
     const t = e.touches[0];
     const dx = t.clientX - dragStart.x;
     const dy = t.clientY - dragStart.y;
     camera.targetRotY = dragStartCam.rotY + dx * 0.006;
     camera.targetRotX = dragStartCam.rotX - dy * 0.006;
     camera.lastInteraction = performance.now();
-  } else if (e.touches.length === 2) {
+  } else if (touchMode === "zoom" && e.touches.length === 2) {
     const dx = e.touches[0].clientX - e.touches[1].clientX;
     const dy = e.touches[0].clientY - e.touches[1].clientY;
     const dist = Math.hypot(dx, dy);
@@ -512,18 +546,33 @@ canvas.addEventListener("touchmove", (e) => {
   }
 }, { passive: true });
 
-canvas.addEventListener("touchend", () => {
-  isDragging = false;
-  touchStartDist = 0;
-  saveCamera();
+canvas.addEventListener("touchend", (e) => {
+  if (e.touches.length === 0) {
+    touchMode = "none";
+    touchStartDist = 0;
+    saveCameraDebounced();
+  } else if (e.touches.length === 1) {
+    // был зум, остался один палец — переключаемся на вращение
+    touchMode = "rotate";
+    dragStart.x = e.touches[0].clientX;
+    dragStart.y = e.touches[0].clientY;
+    dragStartCam.rotX = camera.targetRotX;
+    dragStartCam.rotY = camera.targetRotY;
+  }
 }, { passive: true });
 
-// ---------------- Физика 3D ----------------
+// ---------------- Волны ----------------
+function addPulse(x, y, z, max, hue) {
+  if (pulses.length >= CFG.maxPulses) pulses.shift();
+  pulses.push({ x, y, z, r: 0, max, hue });
+}
+
+// ---------------- Физика ----------------
 function updatePhysics() {
   // кластерное притяжение по тегам
   const byTag = new Map();
   for (const n of nodes) {
-    if (!n.tag) continue;
+    if (n.dying || !n.tag) continue;
     if (!byTag.has(n.tag)) byTag.set(n.tag, []);
     byTag.get(n.tag).push(n);
   }
@@ -531,18 +580,18 @@ function updatePhysics() {
   for (const n of nodes) {
     if (n.dying) { n.radius *= 0.94; continue; }
 
-    // дрейф
     n.x += n.vx;
     n.y += n.vy;
     n.z += n.vz;
 
-    // отталкивание в 3D
+    // отталкивание 3D
     for (const o of nodes) {
       if (o === n || o.dying) continue;
       const dx = n.x - o.x, dy = n.y - o.y, dz = n.z - o.z;
-      const d = Math.hypot(dx, dy, dz) || 1;
+      const d2 = dx * dx + dy * dy + dz * dz;
       const minDist = n.radius + o.radius + 50;
-      if (d < minDist) {
+      if (d2 < minDist * minDist && d2 > 0.01) {
+        const d = Math.sqrt(d2);
         const f = (minDist - d) / minDist;
         n.vx += (dx / d) * f * 0.2;
         n.vy += (dy / d) * f * 0.2;
@@ -550,15 +599,15 @@ function updatePhysics() {
       }
     }
 
-    // притяжение к центру мира
+    // притяжение к центру
     const dc = Math.hypot(n.x, n.y, n.z) || 1;
     n.vx -= (n.x / dc) * 0.0006;
     n.vy -= (n.y / dc) * 0.0006;
     n.vz -= (n.z / dc) * 0.0006;
 
     // кластер по тегу
-    if (n.tag && byTag.get(n.tag).length > 1) {
-      const cluster = byTag.get(n.tag);
+    const cluster = n.tag ? byTag.get(n.tag) : null;
+    if (cluster && cluster.length > 1) {
       let cx = 0, cy = 0, cz = 0;
       for (const c of cluster) { cx += c.x; cy += c.y; cz += c.z; }
       cx /= cluster.length; cy /= cluster.length; cz /= cluster.length;
@@ -576,7 +625,6 @@ function updatePhysics() {
       n.vx *= -0.5; n.vy *= -0.5; n.vz *= -0.5;
     }
 
-    // трение
     n.vx *= 0.965;
     n.vy *= 0.965;
     n.vz *= 0.965;
@@ -587,31 +635,31 @@ function updatePhysics() {
     n.radius += (targetR - n.radius) * 0.15;
   }
 
-  // фоновые частицы дрейфуют
+  // фоновые частицы
   for (const a of ambientNodes) {
     a.x += a.vx;
     a.y += a.vy;
     a.z += a.vz;
     const d = Math.hypot(a.x, a.y, a.z);
     if (d > CFG.worldRadius * 2) {
+      // разворачиваем к центру
+      const k = (CFG.worldRadius * 2) / d;
+      a.x *= k; a.y *= k; a.z *= k;
       a.vx *= -1; a.vy *= -1; a.vz *= -1;
     }
   }
 }
 
-// ---------------- Камера: плавная интерполяция + автовращение ----------------
+// ---------------- Камера ----------------
 function updateCamera() {
-  // автовращение, если давно не трогали
   const idle = performance.now() - camera.lastInteraction;
   if (idle > CFG.autoRotateResumeDelay && !isDragging && !isPanning) {
     camera.targetRotY += CFG.autoRotate;
   }
 
-  // плавная интерполяция
   const lerp = 0.12;
   camera.rotX += (camera.targetRotX - camera.rotX) * lerp;
   camera.rotY += (camera.targetRotY - camera.rotY) * lerp;
-  camera.rotZ += (camera.targetRotZ - camera.rotZ) * lerp;
   camera.zoom += (camera.targetZoom - camera.zoom) * lerp;
   camera.panX += (camera.targetPanX - camera.panX) * lerp;
   camera.panY += (camera.targetPanY - camera.panY) * lerp;
@@ -619,7 +667,7 @@ function updateCamera() {
 
 // ---------------- Отрисовка ----------------
 function drawScene(c) {
-  // ====== Осевые линии (X, Y, Z) ======
+  // ==== Оси ====
   const axisLen = CFG.worldRadius * 1.4;
   const axes = [
     { p1: { x: -axisLen, y: 0, z: 0 }, p2: { x: axisLen, y: 0, z: 0 }, color: "rgba(255, 80, 80, 0.12)" },
@@ -638,17 +686,17 @@ function drawScene(c) {
     c.stroke();
   }
 
-  // ====== Фоновые частицы ======
+  // ==== Фоновые частицы ====
   const ambientProjected = [];
   for (const a of ambientNodes) {
     const p = project(a);
-    if (!p || !p.visible) continue;
+    if (!p) continue;
     const aScale = Math.min(2, p.scale);
     if (aScale < 0.05) continue;
     const aDepth = Math.min(1, 400 / p.depth);
     ambientProjected.push({ p, aScale, aDepth, node: a });
   }
-  // связи фоновых
+
   c.lineWidth = 0.5;
   for (let i = 0; i < ambientProjected.length; i++) {
     const A = ambientProjected[i];
@@ -676,18 +724,16 @@ function drawScene(c) {
     c.fill();
   }
 
-  // ====== Проекции всех узлов ======
+  // ==== Проекции узлов ====
   const projected = [];
   for (const n of nodes) {
     const p = project(n);
-    if (!p || !p.visible) continue;
+    if (!p) continue;
     projected.push({ node: n, proj: p });
   }
+  projected.sort((a, b) => b.proj.depth - a.proj.depth); // дальние раньше
 
-  // сортируем по глубине: дальние — раньше
-  projected.sort((a, b) => b.proj.depth - a.proj.depth);
-
-  // ====== Триангуляция (нити между близкими узлами) ======
+  // ==== Триангуляция ====
   for (let i = 0; i < projected.length; i++) {
     const A = projected[i];
     if (A.node.dying) continue;
@@ -709,14 +755,12 @@ function drawScene(c) {
       c.lineWidth = 1.2 * avgDepth;
       c.beginPath();
       c.moveTo(A.proj.x, A.proj.y);
-      // лёгкая кривизна
       const mx = (A.proj.x + B.proj.x) / 2 + Math.sin(time * 0.02 + i + j) * 6;
       const my = (A.proj.y + B.proj.y) / 2 + Math.cos(time * 0.02 + i + j) * 6;
       c.quadraticCurveTo(mx, my, B.proj.x, B.proj.y);
       c.stroke();
       c.restore();
 
-      // импульс по нити
       const t = ((time * 0.01 + i * 0.3 + j * 0.7) % 1);
       const px = A.proj.x + (B.proj.x - A.proj.x) * t;
       const py = A.proj.y + (B.proj.y - A.proj.y) * t;
@@ -727,10 +771,13 @@ function drawScene(c) {
     }
   }
 
-  // ====== Явные связи ======
+  // ==== Явные связи (через Map для скорости) ====
+  const projMap = new Map();
+  for (const P of projected) projMap.set(P.node.id, P);
+
   for (const link of links) {
-    const A = projected.find(p => p.node.id === link.a);
-    const B = projected.find(p => p.node.id === link.b);
+    const A = projMap.get(link.a);
+    const B = projMap.get(link.b);
     if (!A || !B) continue;
     const avgDepth = Math.min(1, 400 / ((A.proj.depth + B.proj.depth) / 2));
     c.save();
@@ -747,7 +794,7 @@ function drawScene(c) {
     c.restore();
   }
 
-  // ====== Нити от курсора ======
+  // ==== Нити от курсора ====
   if (mouse.x > 0 && mouse.y > 0 && !isDragging && !isPanning) {
     for (const P of projected) {
       const n = P.node;
@@ -755,7 +802,7 @@ function drawScene(c) {
       const dx = P.proj.x - mouse.x;
       const dy = P.proj.y - mouse.y;
       const d = Math.hypot(dx, dy);
-      if (d < CFG.mouseInfluence) {
+      if (d < CFG.mouseInfluence && d > 0) {
         const alpha = (1 - d / CFG.mouseInfluence) * 0.8;
         c.save();
         c.shadowBlur = 10;
@@ -771,7 +818,7 @@ function drawScene(c) {
     }
   }
 
-  // ====== Волны от кликов (в 3D) ======
+  // ==== Волны ====
   for (const pulse of pulses) {
     pulse.r += 8;
     const p = project({ x: pulse.x, y: pulse.y, z: pulse.z });
@@ -785,18 +832,18 @@ function drawScene(c) {
   }
   pulses = pulses.filter(p => p.r < p.max);
 
-  // ====== Узлы (в порядке дальности) ======
+  // ==== Узлы (сортировка по глубине) ====
   for (const P of projected) {
     const n = P.node;
     const p = P.proj;
-    const depthFactor = Math.min(1, 500 / p.depth); // 0..1
+    const depthFactor = Math.min(1, 500 / p.depth);
     const r = n.radius * p.scale;
     if (r < 0.5) continue;
 
     const hue = n.hue;
     const alphaZ = depthFactor + n.flash * 0.4;
 
-    // свечение
+    // glow
     const glow = c.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 2.5);
     glow.addColorStop(0, hsl(hue, 100, 65, 0.6 * alphaZ));
     glow.addColorStop(0.5, hsl(hue, 100, 50, 0.15 * alphaZ));
@@ -806,7 +853,7 @@ function drawScene(c) {
     c.arc(p.x, p.y, r * 2.5, 0, Math.PI * 2);
     c.fill();
 
-    // вращающееся кольцо
+    // кольцо
     c.save();
     c.translate(p.x, p.y);
     c.rotate(time * 0.01 + n.phase);
@@ -820,7 +867,7 @@ function drawScene(c) {
     c.stroke();
     c.restore();
 
-    // пунктирное внешнее кольцо
+    // внешнее пунктирное
     c.strokeStyle = hsl(hue, 100, 70, 0.25 * alphaZ);
     c.lineWidth = 1;
     c.setLineDash([2, 4]);
@@ -848,7 +895,7 @@ function drawScene(c) {
     c.arc(p.x - r * 0.3, p.y - r * 0.3, r * 0.2, 0, Math.PI * 2);
     c.fill();
 
-    // название (только если достаточно близко)
+    // подпись
     if (depthFactor > 0.4) {
       c.font = `${Math.max(9, 11 * depthFactor)}px Consolas, monospace`;
       c.fillStyle = n.hovered
@@ -868,7 +915,6 @@ function drawScene(c) {
 function applyBloom() {
   bctx.clearRect(0, 0, W, H);
   bctx.drawImage(canvas, 0, 0);
-  bctx.globalCompositeOperation = "source-over";
 }
 
 // ---------------- HUD ----------------
@@ -880,9 +926,9 @@ const hudZoom = document.getElementById("hudZoom");
 function updateHud(dt) {
   if (hudCursor) hudCursor.textContent = `${Math.round(mouse.x)}, ${Math.round(mouse.y)}`;
   if (hudRot) {
-    const degX = ((camera.rotX * 180 / Math.PI) % 360).toFixed(0);
-    const degY = ((camera.rotY * 180 / Math.PI) % 360).toFixed(0);
-    hudRot.textContent = `${degX}°, ${degY}°`;
+    const degX = ((camera.rotX * 180 / Math.PI) % 360);
+    const degY = ((camera.rotY * 180 / Math.PI) % 360);
+    hudRot.textContent = `${isFinite(degX) ? degX.toFixed(0) : 0}°, ${isFinite(degY) ? degY.toFixed(0) : 0}°`;
   }
   if (hudZoom) hudZoom.textContent = camera.zoom.toFixed(2);
   fpsAccum += dt;
@@ -902,12 +948,16 @@ function loop(now) {
   time++;
   systemPulse = (Math.sin(time * 0.02) + 1) / 2;
 
+  // шлейф
   ctx.fillStyle = "rgba(0, 2, 8, 0.32)";
   ctx.fillRect(0, 0, W, H);
 
+  ctx.save();       // <-- гарантированно сбрасываем shadowBlur/lineDash
   updateCamera();
   updatePhysics();
   drawScene(ctx);
+  ctx.restore();
+
   applyBloom();
 
   if (time % CFG.sparkInterval === 0 && mouse.x > 0 && mouse.y > 0 && !isDragging && !isPanning) {
@@ -921,11 +971,11 @@ function loop(now) {
 }
 requestAnimationFrame(loop);
 
-// ---------------- Публичный API сброса ----------------
+// ---------------- API ----------------
 window.resetPensieveCamera = resetCamera;
 
 // ---------------- Приветствие ----------------
-log("SYS.INIT v4 · 3D", "ok");
+log("SYS.INIT v4.1 · 3D", "ok");
 log("CAMERA ONLINE", "ok");
 log("NEURAL NET ONLINE", "ok");
 log("DRAG TO ROTATE", "info");
