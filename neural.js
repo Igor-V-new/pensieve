@@ -247,4 +247,169 @@ function drawAmbient() {
 
     ctx.fillStyle = `rgba(0, 200, 240, ${0.4 * a.z})`;
     ctx.beginPath();
-    ctx.arc
+    ctx.arc(a.x, a.y, a.r * a.z, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawNodeLinks() {
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      const a = nodes[i], b = nodes[j];
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (d >= CFG.linkDistance) continue;
+
+      const zAvg = (a.z + b.z) / 2;
+      const alpha = (1 - d / CFG.linkDistance) * 0.7 * zAvg;
+
+      ctx.save();
+      ctx.shadowBlur = 8 * zAvg;
+      ctx.shadowColor = `rgba(0, 229, 255, ${alpha})`;
+      ctx.strokeStyle = `rgba(0, 229, 255, ${alpha * 0.9})`;
+      ctx.lineWidth = 1.2 * zAvg;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      const mx = (a.x + b.x) / 2 + Math.sin(time * 0.02 + i + j) * 8;
+      const my = (a.y + b.y) / 2 + Math.cos(time * 0.02 + i + j) * 8;
+      ctx.quadraticCurveTo(mx, my, b.x, b.y);
+      ctx.stroke();
+      ctx.restore();
+
+      const t = ((time * 0.01 + i * 0.3 + j * 0.7) % 1);
+      const px = a.x + (b.x - a.x) * t;
+      const py = a.y + (b.y - a.y) * t;
+      ctx.fillStyle = `rgba(180, 255, 255, ${alpha})`;
+      ctx.beginPath();
+      ctx.arc(px, py, 1.8 * zAvg, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+function drawMouseLinks() {
+  for (const n of nodes) {
+    const d = Math.hypot(n.x - mouse.x, n.y - mouse.y);
+    if (d < CFG.mouseInfluence) {
+      const alpha = (1 - d / CFG.mouseInfluence) * 0.8;
+      ctx.save();
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = `rgba(0, 229, 255, ${alpha})`;
+      ctx.strokeStyle = `rgba(100, 240, 255, ${alpha})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(mouse.x, mouse.y);
+      ctx.lineTo(n.x, n.y);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+}
+
+function drawNodes() {
+  const sorted = [...nodes].sort((a, b) => a.z - b.z);
+  for (const n of sorted) {
+    const alphaZ = Math.min(1, n.z);
+
+    const glow = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.radius * 2.5);
+    glow.addColorStop(0, `rgba(0, 229, 255, ${0.5 * alphaZ})`);
+    glow.addColorStop(0.5, `rgba(0, 229, 255, ${0.1 * alphaZ})`);
+    glow.addColorStop(1, "rgba(0, 229, 255, 0)");
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, n.radius * 2.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.save();
+    ctx.translate(n.x, n.y);
+    ctx.rotate(time * 0.01 + n.phase);
+    ctx.strokeStyle = `rgba(0, 229, 255, ${(n.hovered ? 0.9 : 0.5) * alphaZ})`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(0, 0, n.radius + 6, 0, Math.PI * 1.4);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(0, 0, n.radius + 6, Math.PI * 1.5, Math.PI * 1.85);
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.strokeStyle = `rgba(0, 180, 220, ${0.25 * alphaZ})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, n.radius + 14, 0, Math.PI * 2);
+    ctx.stroke();
+
+    const core = ctx.createRadialGradient(
+      n.x - n.radius * 0.3, n.y - n.radius * 0.3, 0,
+      n.x, n.y, n.radius
+    );
+    core.addColorStop(0, `rgba(180, 255, 255, ${alphaZ})`);
+    core.addColorStop(0.5, `rgba(0, 200, 240, ${0.9 * alphaZ})`);
+    core.addColorStop(1, `rgba(0, 100, 150, ${0.6 * alphaZ})`);
+    ctx.fillStyle = core;
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = `rgba(255, 255, 255, ${0.6 * alphaZ})`;
+    ctx.beginPath();
+    ctx.arc(n.x - n.radius * 0.3, n.y - n.radius * 0.3, n.radius * 0.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.font = `${Math.max(9, 11 * alphaZ)}px Consolas, monospace`;
+    ctx.fillStyle = n.hovered
+      ? `rgba(180, 255, 255, ${alphaZ})`
+      : `rgba(0, 229, 255, ${0.75 * alphaZ})`;
+    ctx.textAlign = "center";
+    ctx.shadowBlur = 6;
+    ctx.shadowColor = "rgba(0, 229, 255, 0.8)";
+    const label = n.title.length > 18 ? n.title.slice(0, 16) + "…" : n.title;
+    ctx.fillText(label.toUpperCase(), n.x, n.y + n.radius + 28);
+    ctx.shadowBlur = 0;
+  }
+}
+
+// ---------------- HUD ----------------
+const hudCursor = document.getElementById("hudCursor");
+const hudFps = document.getElementById("hudFps");
+
+function updateHud(dt) {
+  if (hudCursor) {
+    hudCursor.textContent = `${Math.round(mouse.x)}, ${Math.round(mouse.y)}`;
+  }
+  fpsAccum += dt;
+  fpsFrames++;
+  if (fpsAccum >= 500) {
+    const fps = Math.round(1000 / (fpsAccum / fpsFrames));
+    if (hudFps) hudFps.textContent = fps;
+    fpsAccum = 0;
+    fpsFrames = 0;
+  }
+}
+
+// ---------------- Главный цикл ----------------
+function loop(now) {
+  const dt = now - lastFrame;
+  lastFrame = now;
+  time++;
+
+  ctx.fillStyle = "rgba(0, 2, 8, 0.35)";
+  ctx.fillRect(0, 0, W, H);
+
+  drawGrid();
+  drawAmbient();
+  drawNodeLinks();
+  drawMouseLinks();
+
+  updateNodesPhysics();
+  drawNodes();
+
+  updateHud(dt);
+
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// ---------------- Приветствие ----------------
+log("SYS.INIT", "ok");
+log("NEURAL NET ONLINE", "ok");
+log("AWAITING INPUT...", "info");
