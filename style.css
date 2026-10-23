@@ -604,3 +604,86 @@ html, body {
   .terminal { display: none; }
   .radar { width: 50px; height: 50px; }
 }
+/* ================================================================
+   ДОПОЛНЕНИЯ v4 — 3D
+   ================================================================ */
+
+#neuralCanvas {
+  cursor: grab;
+}
+#neuralCanvas.dragging {
+  cursor: grabbing;
+}
+#neuralCanvas.hovering-node {
+  cursor: pointer;
+}
+
+/* ====== Подсказка по управлению ====== */
+.help-hint {
+  position: fixed;
+  top: 80px;
+  left: 40px;
+  background: rgba(0, 20, 30, 0.8);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--cyan-soft);
+  border-radius: 6px;
+  padding: 14px 16px 14px 14px;
+  z-index: 7;
+  font-size: 0.68rem;
+  letter-spacing: 1px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: 0 0 20px rgba(0, 229, 255, 0.12);
+  transition: opacity 0.3s, transform 0.3s;
+  max-width: 240px;
+}
+
+.help-hint.hidden {
+  opacity: 0;
+  transform: translateX(-20px);
+  pointer-events: none;
+}
+
+.help-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.help-key {
+  color: var(--cyan);
+  font-weight: bold;
+  text-shadow: 0 0 6px var(--cyan-soft);
+  white-space: nowrap;
+}
+
+.help-row span:last-child {
+  color: rgba(0, 229, 255, 0.5);
+}
+
+.help-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: transparent;
+  border: none;
+  color: rgba(0, 229, 255, 0.5);
+  font-size: 0.8rem;
+  cursor: pointer;
+  width: 22px;
+  height: 22px;
+  border-radius: 3px;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.help-close:hover {
+  color: var(--cyan);
+  background: rgba(0, 229, 255, 0.1);
+}
+
+@media (max-width: 900px) {
+  .help-hint { display: none; }
+}
