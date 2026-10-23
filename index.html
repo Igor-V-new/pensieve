@@ -3,24 +3,22 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PENSIEVE // Нейросеть памяти</title>
+  <title>PENSIEVE // Нейросеть памяти v4 · 3D</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
-  <!-- Canvas с нейросетью -->
   <canvas id="neuralCanvas"></canvas>
+  <canvas id="bloomCanvas"></canvas>
 
-  <!-- Сканирующая линия -->
+  <div id="sparksLayer"></div>
   <div class="scan-line"></div>
 
-  <!-- HUD-уголки -->
   <div class="hud-corner hud-tl"></div>
   <div class="hud-corner hud-tr"></div>
   <div class="hud-corner hud-bl"></div>
   <div class="hud-corner hud-br"></div>
 
-  <!-- Радар в правом верхнем углу -->
   <div class="radar">
     <div class="radar-circle radar-c1"></div>
     <div class="radar-circle radar-c2"></div>
@@ -30,7 +28,6 @@
     <div class="radar-label">SCAN</div>
   </div>
 
-  <!-- Терминал-лог справа снизу -->
   <div class="terminal" id="terminal">
     <div class="terminal-header">
       <span class="terminal-dot"></span>
@@ -39,42 +36,66 @@
     <div class="terminal-body" id="terminalBody"></div>
   </div>
 
-  <!-- Левый нижний HUD: координаты и статус -->
   <div class="hud-status">
     <div class="hud-row"><span class="hud-key">CURSOR</span><span id="hudCursor" class="hud-val">0, 0</span></div>
     <div class="hud-row"><span class="hud-key">FPS</span><span id="hudFps" class="hud-val">60</span></div>
     <div class="hud-row"><span class="hud-key">NODES</span><span id="hudNodes" class="hud-val">0</span></div>
+    <div class="hud-row"><span class="hud-key">LINKS</span><span id="hudLinks" class="hud-val">0</span></div>
+    <div class="hud-row"><span class="hud-key">ROT</span><span id="hudRot" class="hud-val">0°, 0°</span></div>
+    <div class="hud-row"><span class="hud-key">ZOOM</span><span id="hudZoom" class="hud-val">1.00</span></div>
     <div class="hud-row"><span class="hud-key">STATUS</span><span class="hud-val hud-ok">● ONLINE</span></div>
   </div>
 
-  <!-- Header -->
   <header class="header">
     <h1>PENSIEVE <span class="dim">//</span> MEMORY NETWORK</h1>
     <p class="subtitle">[ нейросеть активна · узлов: <span id="nodeCount">0</span> ]</p>
   </header>
 
-  <!-- Основной UI -->
   <main class="container">
     <section class="panel" id="formPanel">
       <button class="panel-toggle" id="toggleForm">＋ НОВЫЙ УЗЕЛ</button>
       <form id="memoryForm" class="memory-form hidden">
+        <input type="hidden" id="editId" />
         <input type="text" id="title" placeholder="НАЗВАНИЕ" maxlength="60" required />
         <textarea id="text" placeholder="ОПИСАНИЕ ВОСПОМИНАНИЯ..." maxlength="500" rows="3" required></textarea>
         <div class="row">
           <input type="date" id="date" required />
-          <input type="text" id="tag" placeholder="ТЕГ" maxlength="20" />
+          <input type="text" id="tag" placeholder="ТЕГ" maxlength="20" list="tagSuggest" />
+          <datalist id="tagSuggest"></datalist>
         </div>
-        <button type="submit">СОЗДАТЬ УЗЕЛ</button>
+        <input type="text" id="links" placeholder="СВЯЗИ (ID через запятую, необязательно)" maxlength="100" />
+        <div class="form-actions">
+          <button type="submit" id="submitBtn">СОЗДАТЬ УЗЕЛ</button>
+          <button type="button" id="cancelEdit" class="ghost-btn hidden">ОТМЕНА</button>
+        </div>
       </form>
     </section>
 
     <section class="controls">
       <input type="text" id="search" placeholder="🔍 СКАНИРОВАТЬ ПАМЯТЬ..." />
       <div id="tagFilters" class="tag-filters"></div>
+      <div class="toolbar">
+        <button class="tool-btn" id="exportBtn" title="Скачать JSON">⬇ EXPORT</button>
+        <button class="tool-btn" id="importBtn" title="Загрузить JSON">⬆ IMPORT</button>
+        <button class="tool-btn" id="scrambleBtn" title="Встряхнуть">⚡ SHUFFLE</button>
+        <button class="tool-btn" id="resetCamBtn" title="Сброс камеры">⟲ CAMERA</button>
+        <input type="file" id="importFile" accept="application/json" hidden />
+      </div>
     </section>
   </main>
 
-  <!-- Модалка -->
+  <div class="timeline" id="timeline"></div>
+
+  <!-- Подсказка по управлению -->
+  <div class="help-hint" id="helpHint">
+    <div class="help-row"><span class="help-key">ЛКМ + drag</span><span>вращение</span></div>
+    <div class="help-row"><span class="help-key">ПКМ / Shift + drag</span><span>сдвиг</span></div>
+    <div class="help-row"><span class="help-key">Колесо</span><span>зум</span></div>
+    <div class="help-row"><span class="help-key">N</span><span>новый узел</span></div>
+    <div class="help-row"><span class="help-key">/</span><span>поиск</span></div>
+    <button class="help-close" id="helpClose">✕</button>
+  </div>
+
   <div id="modal" class="modal hidden">
     <div class="modal-content">
       <div class="modal-header">
@@ -84,7 +105,14 @@
       <h2 id="modalTitle"></h2>
       <p id="modalDate" class="modal-date"></p>
       <p id="modalText"></p>
-      <span id="modalTag" class="tag"></span>
+      <div class="modal-tags">
+        <span id="modalTag" class="tag"></span>
+      </div>
+      <div class="modal-links" id="modalLinks"></div>
+      <div class="modal-actions">
+        <button id="editBtn" class="modal-btn">✎ РЕДАКТИРОВАТЬ</button>
+        <button id="deleteBtn" class="modal-btn danger">✕ УДАЛИТЬ</button>
+      </div>
     </div>
   </div>
 
