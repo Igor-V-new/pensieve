@@ -8,8 +8,11 @@
 </head>
 <body>
 
-  <!-- Canvas-фон с нитями -->
+  <!-- Canvas с нейросетью -->
   <canvas id="neuralCanvas"></canvas>
+
+  <!-- Сканирующая линия -->
+  <div class="scan-line"></div>
 
   <!-- HUD-уголки -->
   <div class="hud-corner hud-tl"></div>
@@ -17,13 +20,41 @@
   <div class="hud-corner hud-bl"></div>
   <div class="hud-corner hud-br"></div>
 
+  <!-- Радар в правом верхнем углу -->
+  <div class="radar">
+    <div class="radar-circle radar-c1"></div>
+    <div class="radar-circle radar-c2"></div>
+    <div class="radar-circle radar-c3"></div>
+    <div class="radar-sweep"></div>
+    <div class="radar-dot"></div>
+    <div class="radar-label">SCAN</div>
+  </div>
+
+  <!-- Терминал-лог справа снизу -->
+  <div class="terminal" id="terminal">
+    <div class="terminal-header">
+      <span class="terminal-dot"></span>
+      <span>SYS.LOG</span>
+    </div>
+    <div class="terminal-body" id="terminalBody"></div>
+  </div>
+
+  <!-- Левый нижний HUD: координаты и статус -->
+  <div class="hud-status">
+    <div class="hud-row"><span class="hud-key">CURSOR</span><span id="hudCursor" class="hud-val">0, 0</span></div>
+    <div class="hud-row"><span class="hud-key">FPS</span><span id="hudFps" class="hud-val">60</span></div>
+    <div class="hud-row"><span class="hud-key">NODES</span><span id="hudNodes" class="hud-val">0</span></div>
+    <div class="hud-row"><span class="hud-key">STATUS</span><span class="hud-val hud-ok">● ONLINE</span></div>
+  </div>
+
+  <!-- Header -->
   <header class="header">
     <h1>PENSIEVE <span class="dim">//</span> MEMORY NETWORK</h1>
     <p class="subtitle">[ нейросеть активна · узлов: <span id="nodeCount">0</span> ]</p>
   </header>
 
+  <!-- Основной UI -->
   <main class="container">
-    <!-- Панель добавления -->
     <section class="panel" id="formPanel">
       <button class="panel-toggle" id="toggleForm">＋ НОВЫЙ УЗЕЛ</button>
       <form id="memoryForm" class="memory-form hidden">
@@ -37,14 +68,13 @@
       </form>
     </section>
 
-    <!-- Панель поиска и тегов -->
     <section class="controls">
       <input type="text" id="search" placeholder="🔍 СКАНИРОВАТЬ ПАМЯТЬ..." />
       <div id="tagFilters" class="tag-filters"></div>
     </section>
   </main>
 
-  <!-- Модалка воспоминания -->
+  <!-- Модалка -->
   <div id="modal" class="modal hidden">
     <div class="modal-content">
       <div class="modal-header">
